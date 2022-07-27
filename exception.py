@@ -1,6 +1,3 @@
-from email import message
-
-
 class HTTPRequestError(Exception):
     def __init__(self, response):
         message = (

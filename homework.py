@@ -1,16 +1,14 @@
-import os
 import logging
+import os
 import sys
 import time
-
-import telegram
-import requests
-
-from dotenv import load_dotenv
 from http import HTTPStatus
 
-from exception import HTTPRequestError, ParseStatusError, CheckResponseError
+import requests
+import telegram
+from dotenv import load_dotenv
 
+from exception import CheckResponseError, HTTPRequestError, ParseStatusError
 
 load_dotenv()
 
@@ -34,10 +32,12 @@ HOMEWORK_STATUSES = {
 def send_message(bot: telegram.Bot, message: str):
     """Отправка сообщения."""
     try:
-        logging.info(f'Бот отправил сообщение {message}')
         bot.send_message(TELEGRAM_CHAT_ID, message)
     except Exception as error:
-        logging.error(error)
+        message = f'Сбой при отправке сообщения {error}'
+        raise Exception(message)
+    else:
+        logging.info(f'Бот отправил сообщение {message} в Telegram')
 
 
 def get_api_answer(current_timestamp):
@@ -55,22 +55,18 @@ def check_response(response):
     """Проверка корректности ответа."""
     if not response:
         message = 'Пустой словарь'
-        logging.error(message)
         raise KeyError(message)
 
     if not isinstance(response, dict):
         message = 'Некорректный тип'
-        logging.error(message)
         raise TypeError(message)
 
     if 'homeworks' not in response:
         message = 'Не найден ожидаемый ключ в ответе'
-        logging.error(message)
         raise KeyError(message)
 
     if not isinstance(response.get('homeworks'), list):
         message = 'Несоответствие формата ответа'
-        logging.error(message)
         raise CheckResponseError(message)
 
     return response['homeworks']
@@ -78,23 +74,20 @@ def check_response(response):
 
 def parse_status(homework):
     """Проверка статуса конкретной дз."""
-    if not homework.get('homework_name'):
-        homework_name = 'Noname'
-        logging.warning('Отсутствует Имя дз')
-    else:
-        homework_name = homework.get('homework_name')
+    homework_name = homework.get('homework_name')
+    if not homework_name:
+        message = 'Отсутствует имя домашней работы'
+        raise KeyError(message)
 
     homework_status = homework.get('status')
     if 'status' not in homework:
         message = 'Отсутствует ключ'
-        logging.error(message)
-        raise ParseStatusError
+        raise ParseStatusError(message)
 
     verdict = HOMEWORK_STATUSES.get(homework_status)
     if homework_status not in HOMEWORK_STATUSES:
         message = 'Статус домашней работы неизвестен'
-        logging.error(message)
-        raise KeyError
+        raise KeyError(message)
 
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
@@ -118,6 +111,8 @@ def main():
         logging.critical(
             'Отсутствует обязательная переменная окружения.'
         )
+        message = 'Программа принудительно остановлена.'
+        sys.exit(message)
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
@@ -126,14 +121,11 @@ def main():
         try:
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
-            if len(homeworks) == 0:
-                logging.debug('Нет домашних работ.')
-                break
-            for homework in homeworks:
-                message = parse_status(homework)
-                if finaly_send.get(homework['homework_name']) != message:
-                    send_message(bot, message)
-                    finaly_send[homework['homework_name']] = message
+            homework = homeworks[0]
+            message = parse_status(homework)
+            if finaly_send.get(homework['homework_name']) != message:
+                send_message(bot, message)
+                finaly_send[homework['homework_name']] = message
             current_timestamp = response.get('current_date')
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
@@ -149,6 +141,6 @@ def main():
 if __name__ == '__main__':
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s  -- %(levelname)s -- %(message)s',
+        format='%(asctime)s -- %(lineno)s  -- %(levelname)s -- %(message)s',
         handlers=[logging.StreamHandler(sys.stdout)])
     main()
